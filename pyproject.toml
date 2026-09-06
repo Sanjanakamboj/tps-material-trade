@@ -8,11 +8,14 @@ version = "0.1.0"
 description = "Thermal-protection-system (TPS) material/system trade study: ablative vs. reusable TPS sizing."
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Sanjana Kamboj" }]
 dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+figures = ["matplotlib>=3.7"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
