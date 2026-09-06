@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tps-trade"
+version = "0.1.0"
+description = "Thermal-protection-system (TPS) material/system trade study: ablative vs. reusable TPS sizing."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Sanjana Kamboj" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

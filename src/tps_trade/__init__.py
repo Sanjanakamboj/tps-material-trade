@@ -1,0 +1,35 @@
+"""tps_trade: TPS (thermal protection system) material/system trade toolkit.
+
+Milestone 1 scope
+------------------
+This package currently provides ONLY a verified one-dimensional, steady-state
+conduction sizing foundation for a single homogeneous TPS slab. It does not
+yet model ablation, pyrolysis, transient response, radiation, or perform any
+multi-material trade/scoring. See the project README for the full milestone
+scope and the physical caveats of the simplified boundary-value problem
+implemented here.
+"""
+
+from .materials import TPSMaterial
+from .conduction import (
+    SizingResult,
+    thermal_resistance,
+    thickness_from_resistance,
+    backface_temperature,
+    heat_flux_from_temperatures,
+    areal_mass,
+    size_thickness_for_backface_limit,
+)
+
+__all__ = [
+    "TPSMaterial",
+    "SizingResult",
+    "thermal_resistance",
+    "thickness_from_resistance",
+    "backface_temperature",
+    "heat_flux_from_temperatures",
+    "areal_mass",
+    "size_thickness_for_backface_limit",
+]
+
+__version__ = "0.1.0"
