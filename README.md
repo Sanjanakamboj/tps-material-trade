@@ -10,7 +10,7 @@ design margin?
 The final deliverable (later milestones) is an engineering trade table and a
 recommended TPS material/system.
 
-## Current scope: Milestone 1 + Milestone 2 + Milestone 3 + Milestone 4
+## Current scope: Milestone 1 + Milestone 2 + Milestone 3 + Milestone 4 + Milestone 5
 
 **Milestone 1** built a verified, one-dimensional, **steady-state**
 conduction model for a single homogeneous reusable TPS slab (a simple
@@ -28,22 +28,31 @@ reusable-TPS conduction models above -- so the project could begin comparing
 reusable insulation against a sacrificial ablative concept on a common
 areal-mass basis (see "Ablative sizing (Milestone 3)" below).
 
-**Milestone 4** performs the first actual **reusable-vs-ablative trade**:
+**Milestone 4** performed the first actual **reusable-vs-ablative trade**:
 a small, explicit candidate database, one canonical illustrative study
 case, sizing of every candidate with the already-verified Milestone 1-3
 models, a transparent trade table, deterministic ranking by areal mass, and
 one preliminary, case-specific recommendation (see "Reusable-vs-ablative
-trade (Milestone 4)" below). This milestone does **not** add lifecycle/
-refurbishment economics, reuse-cycle degradation modeling, or a final
-material recommendation beyond the single defined study case.
+trade (Milestone 4)" below).
 
-None of the four milestones implement pyrolysis kinetics, moving-boundary
+**Milestone 5** extends that single-event trade into a simple, transparent
+**mission-lifecycle** comparison: a reusable service-life/refurbishment
+convention, an ablative replenishment convention, mission-count and
+sensitivity studies, and a deterministic break-even search -- all built
+strictly on top of the Milestone 4 single-event results, adding no new
+thermal physics (see "Reusable-vs-ablative lifecycle trade (Milestone 5)"
+below). It does **not** add monetary cost, maintenance labor, probabilistic
+damage/degradation, material aging, coating erosion, or a final material
+recommendation beyond the illustrative assumptions used here.
+
+None of the five milestones implement pyrolysis kinetics, moving-boundary
 finite-difference conduction, char-layer thermochemistry, surface
 chemistry, a coupled convective/radiative surface energy balance,
-temperature-dependent material properties, blowing correction,
-lifecycle/reuse scoring, trajectory simulation, CFD, radiation transport,
-or a final, general material recommendation. Those remain explicitly out of
-scope until later milestones.
+temperature-dependent material properties, blowing correction, monetary
+cost, maintenance labor accounting, probabilistic damage/degradation,
+trajectory simulation, CFD, radiation transport, or a final, general
+material recommendation. Those remain explicitly out of scope until later
+milestones.
 
 ## Slab coordinate convention
 
@@ -457,6 +466,121 @@ heat-flux history/retained-thickness convention -- fairness by
 construction, not a separate check bolted on afterward. All quantities
 throughout remain SI internally.
 
+## Reusable-vs-ablative lifecycle trade (Milestone 5)
+
+This section extends the Milestone 4 single-event trade into a
+**mission-lifecycle** comparison. It introduces **no new thermal physics**
+-- every lifecycle number starts from an already-sized Milestone 4
+`TradeResult` (thermal feasibility and initial areal mass) with an
+explicit mass-accounting convention layered on top (see
+[src/tps_trade/lifecycle.py](src/tps_trade/lifecycle.py)). Call this what
+it is: an **illustrative lifecycle mass-equivalent trade**, not a real
+operations-cost or reliability model.
+
+**The Milestone 4 single-event result is preserved, not replaced** -- see
+"Trade study result (Milestone 4)" above, still reproducible via
+`examples/tps_material_trade.py`. Milestone 5 adds lifecycle context on
+top of it via a separate ranking (`rank_lifecycle_by_burden`), never by
+overwriting `rank_feasible_by_mass`.
+
+### Lifecycle philosophy
+
+- **Reusable TPS**: the installed TPS is retained between missions. It may
+  incur a small refurbishment-equivalent mass penalty each mission
+  (inspection, minor repair, coating touch-up, handling), and has a finite
+  service life in missions, after which the entire installation is
+  replaced.
+- **Ablative TPS**: the modeled sacrificial (consumed) material is
+  replenished before each subsequent mission; the retained substrate
+  thickness is not treated as newly consumed each mission.
+
+Neither category is assumed superior in advance.
+
+### Lifecycle configuration (`LifecycleConfig`)
+
+All assumptions are explicit, validated fields -- never buried inside a
+candidate's material properties:
+
+- `mission_count` (M >= 1)
+- `reusable_service_life_missions` (N_service >= 1) -- illustrative (e.g.
+  25/50/100 missions), **not** a claim about any real vehicle's tile
+  lifetime unless separately sourced
+- `reusable_refurbishment_fraction` (f_refurb >= 0) -- an illustrative
+  **mass-equivalent** penalty per mission (fraction of installed mass),
+  representing inspection/minor repair/coating touch-up/handling, **not**
+  actual removed-and-replaced material
+- `reusable_replace_at_end_of_service_life` (default `True`) -- if `False`,
+  flying past the service life is not modeled; that case is reported as
+  lifecycle-infeasible instead
+- `ablative_replenishment_convention` -- documentation-only tag; only
+  `"consumed_mass_only"` (below) is implemented in this milestone
+
+### Reusable lifecycle equation
+
+For installed areal mass `m''_installed`, service life `N_service`, and
+refurbishment fraction `f_refurb`, over `M >= 1` missions:
+
+```
+installation_count = ceil(M / N_service)
+replacement_count   = installation_count - 1
+
+installation_burden  = installation_count * m''_installed
+refurbishment_burden = f_refurb * m''_installed * M
+
+cumulative_burden = installation_burden + refurbishment_burden
+```
+
+**Replacement-timing convention**: one installation is good for *exactly*
+`N_service` missions (missions `1..N_service` fly on installation #1,
+`N_service+1..2*N_service` on installation #2, etc.) -- so the first
+replacement is required *before* mission `N_service + 1`, not at mission
+`N_service` itself. At `M == N_service` there are 0 replacements; at
+`M == N_service + 1` there is 1.
+
+### Ablative lifecycle equation
+
+For initial areal mass `m''_initial` and consumed areal mass per mission
+`m''_consumed` (both from the Milestone 3 single-event sizing), assuming
+mission 1 requires the full initial mass and every subsequent mission
+requires replenishing only the consumed mass, over `M >= 1` missions:
+
+```
+replenishment_count  = M - 1
+replenishment_burden = (M - 1) * m''_consumed
+
+cumulative_burden = m''_initial + replenishment_burden
+```
+
+No additional ablative refurbishment penalty is introduced. Both
+conventions reduce to the Milestone 4 single-event result at `M=1` with
+zero refurbishment: `cumulative_burden == initial_areal_mass`.
+
+### Common lifecycle result and ranking
+
+`LifecycleResult` exposes common fields (`name`, `category`,
+`mission_count`, `feasible`, `initial_areal_mass`,
+`cumulative_lifecycle_burden`, `mission_averaged_burden`, `replacements`,
+`notes`) plus exactly one of `reusable_detail` / `ablative_detail`. The
+`replacements` field counts a **different physical event per category**
+(full installation replacements for reusable; replenishment top-ups for
+ablative, always `M-1`) -- documented explicitly rather than pretending the
+two are the same quantity.
+
+`rank_lifecycle_by_burden(...)` excludes thermally infeasible candidates
+(the fibrous blanket stays excluded here too -- lifecycle assumptions
+never make a thermally infeasible candidate feasible) and ranks the rest
+ascending by `cumulative_lifecycle_burden`, tie-broken by name. This
+ranking is deliberately kept **separate** from Milestone 4's
+`rank_feasible_by_mass`.
+
+### Break-even / crossover search
+
+`find_breakeven_mission_count(candidate_a, candidate_b, base_config,
+mission_range)` deterministically scans a finite, explicit mission-count
+range for the first mission count at which the lower-burden candidate
+changes, returning a clear "no crossover found within this range"
+diagnostic rather than extrapolating beyond the searched bound.
+
 ## Important limitation
 
 Prescribing `T_hot` and `q''` simultaneously and independently is an
@@ -519,6 +643,20 @@ coatings, no integration penalties, no structural durability assessment,
 and no cost accounting. **This is a preliminary model comparison, not a
 certified TPS selection.** See the docstring in
 [src/tps_trade/trade.py](src/tps_trade/trade.py) for the full discussion.
+
+The lifecycle trade (Milestone 5) adds the mission-lifecycle mass
+accounting described above, but is explicitly **not**: a monetary cost
+model, a maintenance-labor-hours model, a probabilistic damage/degradation
+model, a reusable material-aging model, a coating-erosion model, an
+impact-damage model, an oxidation-kinetics model, or an ablative chemistry
+model. It also does not model rain/weather/environmental exposure between
+missions, attachment/substructure replacement, or thermal-property aging
+with cycle count, and it simplifies ablative replenishment to consumed
+material only (no additional ablative refurbishment penalty). Call this
+model what it is: an **illustrative lifecycle mass-equivalent trade**, not
+a real operations-cost model. See the docstring in
+[src/tps_trade/lifecycle.py](src/tps_trade/lifecycle.py) for the full
+discussion.
 
 ## Engineering interpretation (Milestone 2)
 
@@ -603,12 +741,42 @@ design model.
   approach, should not) collapse thermal capability, reuse potential, and
   manufacturability into a single arbitrary weighted score.
 
+## Engineering interpretation (Milestone 5)
+
+- **Reusable TPS pays an initial installation "penalty" but can amortize
+  it over many missions** -- a reusable candidate's cumulative burden grows
+  only through refurbishment and (infrequent) replacement, not per-mission
+  consumption.
+- **Ablative TPS incurs a recurring sacrificial-mass demand** -- every
+  mission after the first requires replenishing the consumed mass, so
+  cumulative burden grows roughly linearly with mission count.
+- **A finite reusable service life introduces replacement penalties** --
+  once a reusable installation exceeds its service life, a full
+  replacement is required, which can noticeably increase cumulative burden
+  (see the service-life sensitivity result below).
+- **Refurbishment can materially affect lifecycle ranking** -- a nonzero
+  `f_refurb` compounds with mission count, so it is worth checking even
+  though it is "just" an illustrative mass-equivalent penalty.
+- **Lifecycle burden is not actual monetary cost.** It is a mass-equivalent
+  bookkeeping quantity, useful for comparing categories on a like-for-like
+  basis, not a stand-in for dollars or labor hours.
+- **Lower initial mass does not automatically mean lower long-term
+  operational burden** -- in general a candidate that wins the Milestone 4
+  single-event comparison need not win the Milestone 5 lifecycle
+  comparison (see the ranking test in the verification suite for a
+  constructed counter-example); it happens to remain the same candidate in
+  this project's specific canonical study case and candidate set.
+- **No meaningful lifecycle conclusion is possible without explicit
+  mission-count assumptions.** "How many missions?" changes the answer, as
+  the mission-count sensitivity below shows directly.
+
 ## Verification summary
 
-132 automated tests in [tests/](tests/) cover the steady model
+156 automated tests in [tests/](tests/) cover the steady model
 (Milestone 1, 38 tests), the transient model (Milestone 2, 31 tests), the
-ablative sizing model (Milestone 3, 36 tests), and the reusable-vs-ablative
-trade (Milestone 4, 27 tests):
+ablative sizing model (Milestone 3, 36 tests), the reusable-vs-ablative
+trade (Milestone 4, 27 tests), and the lifecycle trade (Milestone 5, 24
+tests):
 
 ### Steady model (Milestone 1)
 
@@ -725,7 +893,40 @@ trade (Milestone 4, 27 tests):
 - `StudyCase` input validation (hot max vs. initial, total time vs. pulse
   duration, thickness bounds, Fourier limit)
 
-All 132 tests currently pass.
+### Lifecycle trade (Milestone 5)
+
+- **A.** One-mission reusable identity (`M=1`, zero refurbishment ->
+  cumulative burden = installed areal mass)
+- **B.** One-mission ablative identity (`M=1` -> cumulative burden =
+  initial areal mass)
+- **C.** Ablative repeated-mission formula hand calculation
+  (`m_initial + (M-1)*m_consumed`)
+- **D.** Reusable refurbishment scaling (doubling `f_refurb` doubles the
+  refurbishment contribution; installation burden unaffected)
+- **E.** Reusable replacement-count convention, parametrized across
+  `M < N_service`, `M == N_service`, `M == N_service+1`, and multiple
+  replacement intervals
+- **F.** Zero refurbishment with a long service life (cumulative burden
+  stays equal to installed mass)
+- **G.** Mission-averaged burden identity (`average = cumulative/M`)
+- **H.** Thermally infeasible exclusion (a synthetic infeasible candidate,
+  and the canonical fibrous blanket, both stay excluded from lifecycle
+  ranking)
+- **I.** Lifecycle ranking can differ from the single-event mass ranking
+  (constructed candidates where the single-event winner loses the
+  multi-mission comparison)
+- **J.** Break-even helper finds a known analytical crossover mission
+  count for a synthetic constant-vs-linear-burden pair
+- **K.** No-crossover behavior, both for a synthetic pair and for the
+  canonical reusable tile vs. dense ablator over a 500-mission search
+- **L.** Determinism (repeated lifecycle and break-even calls agree
+  exactly)
+- `LifecycleConfig` input validation; `reusable_replace_at_end_of_service_life=False`
+  behavior; category-mismatch rejection in the dispatch functions
+- End-to-end `run_lifecycle_study` / `summarize_lifecycle` check on the
+  canonical candidate database
+
+All 156 tests currently pass.
 
 ## Sanity-case result (Milestone 1, steady)
 
@@ -903,6 +1104,76 @@ because its recession exceeds its illustrative structural allowable,
 independent of the mass ranking itself. No crossover was forced; this is
 simply what the numbers show for this candidate set and case.
 
+## Lifecycle trade result (Milestone 5)
+
+Run via [examples/tps_lifecycle_trade.py](examples/tps_lifecycle_trade.py),
+using the SAME candidates and study case as Milestone 4, with baseline
+illustrative lifecycle assumptions: reusable service life = 50 missions,
+refurbishment-equivalent fraction = 1% of installed mass per mission.
+
+**Mission-count sensitivity** (cumulative lifecycle burden, kg/m^2-equivalent):
+
+| Missions | Reusable low-density tile | Lightweight charring ablator | Dense high-H_eff ablator | Winner |
+|---|---|---|---|---|
+| 1 | 5.73 | 21.68 | 19.00 | Reusable tile |
+| 5 | 5.95 | 101.68 | 67.00 | Reusable tile |
+| 10 | 6.24 | 201.68 | 127.00 | Reusable tile |
+| 25 | 7.09 | 501.68 | 307.00 | Reusable tile |
+| 50 | 8.50 | 1001.68 | 607.00 | Reusable tile |
+| 100 | 17.01 | 2001.68 | 1207.00 | Reusable tile |
+
+(The fibrous blanket remains excluded throughout -- it never becomes
+lifecycle-feasible; thermal infeasibility is never overridden by lifecycle
+assumptions.)
+
+**Single-event vs. lifecycle winners**: the single-event (Milestone 4)
+winner, the 50-mission lifecycle winner, and the 100-mission lifecycle
+winner are all the **Reusable low-density tile (illustrative)** in this
+study case -- the two kinds of conclusion happen to agree here, but
+Milestone 5's own verification tests include a constructed counter-example
+showing they do not have to.
+
+**Break-even analysis** (reusable tile vs. dense high-H_eff ablator, 1-500
+missions): **no crossover found** -- the tile leads throughout the searched
+range (burden at 500 missions: tile = 85.03 kg/m^2-equivalent vs. dense
+ablator = 6007.00 kg/m^2-equivalent). This is a real result of this
+candidate set's parameters, not a forced outcome.
+
+**Service-life sensitivity** (reusable tile, 100 missions, f_refurb = 1%):
+
+| N_service | Cumulative burden | Replacements |
+|---|---|---|
+| 10 | 62.36 | 9 |
+| 25 | 28.34 | 3 |
+| 50 | 17.01 | 1 |
+| 100 | 11.34 | 0 |
+
+Even at the shortest illustrative service life tested (10 missions), the
+tile's burden (62.36) stays far below the dense ablator's 100-mission
+burden (1207.00) -- the ranking does not change.
+
+**Refurbishment-fraction sensitivity** (reusable tile, 50 missions):
+
+| f_refurb | Cumulative burden |
+|---|---|
+| 0% | 5.67 |
+| 1% | 8.50 |
+| 2% | 11.34 |
+| 5% | 19.84 |
+
+Again far below the dense ablator's 50-mission burden (607.00) across the
+whole sensitivity range tested.
+
+**Takeaway for this study case**: neither service-life nor
+refurbishment-fraction sensitivity changes the ranking, because these
+ablative candidates' per-mission consumed mass is large relative to the
+reusable tile's installation/refurbishment burden. This is a property of
+*these* illustrative candidates and assumptions -- a different candidate
+set (e.g. a much lower-consumption ablator, or a very short reusable
+service life) could show a different, or crossing, result. All lifecycle
+parameters here are illustrative; this is not a claim about real
+operational cost.
+
 ## Install & test
 
 ```bash
@@ -914,6 +1185,7 @@ python examples/sanity_case.py
 python examples/transient_heating_study.py
 python examples/ablative_sanity_case.py
 python examples/tps_material_trade.py
+python examples/tps_lifecycle_trade.py
 ```
 
 ## License

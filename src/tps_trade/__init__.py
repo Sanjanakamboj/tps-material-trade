@@ -63,6 +63,21 @@ from .candidates import (
     REUSABLE_CANDIDATES,
     ABLATIVE_CANDIDATES,
 )
+from .lifecycle import (
+    LifecycleConfig,
+    ReusableLifecycleDetail,
+    AblativeLifecycleDetail,
+    LifecycleResult,
+    LifecycleSummary,
+    BreakevenResult,
+    compute_reusable_lifecycle,
+    compute_ablative_lifecycle,
+    compute_lifecycle,
+    run_lifecycle_study,
+    rank_lifecycle_by_burden,
+    summarize_lifecycle,
+    find_breakeven_mission_count,
+)
 
 __all__ = [
     "TPSMaterial",
@@ -108,6 +123,19 @@ __all__ = [
     "STUDY_CASE",
     "REUSABLE_CANDIDATES",
     "ABLATIVE_CANDIDATES",
+    "LifecycleConfig",
+    "ReusableLifecycleDetail",
+    "AblativeLifecycleDetail",
+    "LifecycleResult",
+    "LifecycleSummary",
+    "BreakevenResult",
+    "compute_reusable_lifecycle",
+    "compute_ablative_lifecycle",
+    "compute_lifecycle",
+    "run_lifecycle_study",
+    "rank_lifecycle_by_burden",
+    "summarize_lifecycle",
+    "find_breakeven_mission_count",
 ]
 
 __version__ = "0.1.0"
