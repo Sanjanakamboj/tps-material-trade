@@ -29,6 +29,20 @@ from .transient import (
     solve_transient_conduction,
     size_thickness_transient,
 )
+from .ablative import (
+    AblativeMaterial,
+    HeatFluxSegment,
+    AblativeSizingResult,
+    AblativeTrialResult,
+    total_heat_load_constant,
+    total_heat_load_piecewise,
+    total_heat_load_sampled,
+    integrated_heat_load,
+    consumed_areal_mass,
+    recession_depth,
+    size_ablative_thickness,
+    evaluate_trial_thickness,
+)
 
 __all__ = [
     "TPSMaterial",
@@ -46,6 +60,18 @@ __all__ = [
     "max_stable_time_step",
     "solve_transient_conduction",
     "size_thickness_transient",
+    "AblativeMaterial",
+    "HeatFluxSegment",
+    "AblativeSizingResult",
+    "AblativeTrialResult",
+    "total_heat_load_constant",
+    "total_heat_load_piecewise",
+    "total_heat_load_sampled",
+    "integrated_heat_load",
+    "consumed_areal_mass",
+    "recession_depth",
+    "size_ablative_thickness",
+    "evaluate_trial_thickness",
 ]
 
 __version__ = "0.1.0"

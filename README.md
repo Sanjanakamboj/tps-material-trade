@@ -10,24 +10,33 @@ design margin?
 The final deliverable (later milestones) is an engineering trade table and a
 recommended TPS material/system.
 
-## Current scope: Milestone 1 + Milestone 2
+## Current scope: Milestone 1 + Milestone 2 + Milestone 3
 
 **Milestone 1** built a verified, one-dimensional, **steady-state**
-conduction model for a single homogeneous TPS slab (a simple analytical
-reference case; see "Steady conduction (Milestone 1)" below).
+conduction model for a single homogeneous reusable TPS slab (a simple
+analytical reference case; see "Steady conduction (Milestone 1)" below).
 
-**Milestone 2** adds a verified, one-dimensional, **transient**
-(time-dependent) conduction model, so a slab can be sized against a
-finite-duration hot-side heating pulse rather than only an indefinitely
-sustained steady boundary condition (see "Transient conduction (Milestone
-2)" below).
+**Milestone 2** added a verified, one-dimensional, **transient**
+(time-dependent) conduction model, so a reusable-TPS slab can be sized
+against a finite-duration hot-side heating pulse rather than only an
+indefinitely sustained steady boundary condition (see "Transient conduction
+(Milestone 2)" below).
 
-Neither milestone implements ablative recession, pyrolysis, material mass
-loss, reusable-vs-ablative material trade scoring, a convective/radiative
-surface energy balance, temperature-dependent conductivity, lifecycle/reuse
-scoring, trajectory simulation, CFD, radiation transport, or a final
-material recommendation. Those remain explicitly out of scope until later
-milestones.
+**Milestone 3** adds a first-order **ablative** TPS sizing model -- a
+lumped surface energy-balance / recession model, independent of the
+reusable-TPS conduction models above -- so the project can begin comparing
+reusable insulation against a sacrificial ablative concept on a common
+areal-mass basis (see "Ablative sizing (Milestone 3)" below). This
+milestone does **not** yet perform that reusable-vs-ablative comparison --
+it only builds and verifies the ablative sizing model itself.
+
+None of the three milestones implement pyrolysis kinetics, moving-boundary
+finite-difference conduction, char-layer thermochemistry, surface
+chemistry, a coupled convective/radiative surface energy balance,
+temperature-dependent material properties, blowing correction,
+reusable-vs-ablative trade scoring, lifecycle/reuse scoring, trajectory
+simulation, CFD, radiation transport, or a final material recommendation.
+Those remain explicitly out of scope until later milestones.
 
 ## Slab coordinate convention
 
@@ -205,6 +214,113 @@ grid-refinement comparison showing the change in peak backface temperature
 shrinking as `n_nodes` is refined at a fixed, stable `dt`, and an example
 scaling of `dt` with `n_nodes` via `max_stable_time_step`.
 
+## Ablative sizing (Milestone 3)
+
+This is a **separate, first-order model** from the reusable-TPS conduction
+models above -- it does not use `TPSMaterial` or the steady/transient
+conduction relations, only its own `AblativeMaterial` and heat-load/
+recession relations (see
+[src/tps_trade/ablative.py](src/tps_trade/ablative.py) for the full
+docstring).
+
+### Model assumptions
+
+A lumped surface energy-balance / recession model, assuming:
+
+- an imposed **net** heat-flux history `q''(t)` reaching the ablating
+  surface (this module does not compute a surface energy balance itself);
+- all absorbed energy goes toward consuming material at a single, constant
+  **effective heat of ablation** `H_eff` [J/kg];
+- uniform, constant material density `rho`;
+- **no** detailed internal conduction/pyrolysis coupling, **no** char-layer
+  resistance, **no** radiative feedback, **no** surface chemistry, **no**
+  blowing correction.
+
+Heat flux is treated as **net-heating-only**: negative heat flux is
+rejected (see "Heat-flux history representation" below).
+
+### Ablative material representation
+
+`AblativeMaterial` (see
+[src/tps_trade/ablative.py](src/tps_trade/ablative.py)) is a validated
+dataclass, chosen as a dedicated type (rather than extending `TPSMaterial`)
+since its core parameter -- `H_eff` -- has no reusable-TPS analog:
+
+- `name`
+- `density` (rho) [kg/m^3], validated positive & finite
+- `effective_heat_of_ablation` (H_eff) [J/kg], validated positive & finite
+- optional `max_usable_temperature` [K], `conductivity` [W/(m*K)],
+  `specific_heat` [J/(kg*K)] -- retained for possible future reuse with the
+  conduction models, validated if provided, unused by this milestone's
+  relations
+
+### Heat-flux history representation
+
+`HeatFluxSegment(heat_flux, duration)` represents one constant-flux segment
+(`heat_flux >= 0`, `duration > 0`); a list of segments is a piecewise
+history. `total_heat_load_sampled(times, heat_flux)` numerically integrates
+an arbitrary sampled `(t, q'')` history via the trapezoidal rule (times
+strictly increasing, flux `>= 0`, both finite). `integrated_heat_load(...)`
+dispatches to the exact piecewise sum or the sampled trapezoidal
+integration depending on what is passed.
+
+### Heat-load and recession equations
+
+Total (net) heat load:
+
+```
+Q'' = integral q''(t) dt          [J/m^2]
+```
+
+Consumed areal mass:
+
+```
+m''_consumed = Q'' / H_eff         [kg/m^2]
+```
+
+Recession depth (consumed thickness), equivalently consumed areal mass
+divided by density:
+
+```
+delta = Q'' / (rho * H_eff)        [m]
+```
+
+### Retained thickness and initial sizing
+
+`t_retained` is an **explicit engineering input** to this model -- the
+thickness that must remain after the heating event for structural
+integrity, insulation, uncertainty, and attachment protection. This module
+does not invent or certify a value for it. Required initial thickness:
+
+```
+t_initial = delta + t_retained
+```
+
+### Mass decomposition
+
+```
+m''_initial   = rho * t_initial
+m''_remaining = rho * t_retained
+m''_consumed  = rho * delta
+m''_initial = m''_remaining + m''_consumed     (verified within tolerance)
+```
+
+### Design margin
+
+For a trial initial thickness `t_trial` (mirroring the Milestone 1/2
+thickness-margin convention):
+
+```
+Margin_t = t_trial - delta - t_retained     [m]
+```
+
+At the exactly sized thickness, `Margin_t ~ 0`. This is a **dimensional
+margin**, not a factor of safety. `evaluate_trial_thickness(...)` also
+reports a pass/fail (`passed = Margin_t >= 0`). `size_ablative_thickness(...)`
+additionally reports an optional recession margin
+(`Margin_delta = max_recession - delta`) when a maximum allowable recession
+depth is supplied.
+
 ## Important limitation
 
 Prescribing `T_hot` and `q''` simultaneously and independently is an
@@ -246,6 +362,17 @@ the docstring in
 [src/tps_trade/transient.py](src/tps_trade/transient.py) for the full
 discussion.
 
+The ablative model (Milestone 3) is a first-order, lumped "energy in, mass
+out" bookkeeping model, **not** a high-fidelity ablation solver: it does
+not represent pyrolysis kinetics, a moving-boundary conduction solution
+through a receding/charring layer, char-layer thermochemistry, surface
+chemistry, a coupled surface energy balance, or blowing (mass-injection)
+correction. The imposed heat-flux history is assumed net-of-surface-effects
+already; the model does not compute how that net flux itself would change
+as the surface recedes or chars. See the docstring in
+[src/tps_trade/ablative.py](src/tps_trade/ablative.py) for the full
+discussion.
+
 ## Engineering interpretation (Milestone 2)
 
 - **Thermal diffusivity, not conductivity alone, controls transient
@@ -275,10 +402,40 @@ discussion.
 This does not change the fact that the model is a simplified mathematical
 sizing tool, not a certified thermal analysis.
 
+## Engineering interpretation (Milestone 3)
+
+- **Heat flux integrated over time determines total heat load.** `Q''` is
+  what drives ablation, not the instantaneous heat flux -- a short, intense
+  pulse and a longer, gentler one can deliver the same `Q''` and therefore
+  the same recession under this model.
+- **Effective heat of ablation determines how much mass must be sacrificed
+  per unit energy.** `H_eff` is the single lumped parameter standing in for
+  pyrolysis, phase change, and reradiation losses combined; it sets
+  `m''_consumed = Q''/H_eff` directly.
+- **Density converts consumed areal mass into recession depth.** The same
+  consumed mass produces less recession in a denser material
+  (`delta = m''_consumed/rho`).
+- **Retained thickness is a separate design requirement**, not something
+  this model derives -- it is supplied as an explicit engineering input
+  and added directly to the recession depth to get the required initial
+  thickness.
+- **High `H_eff` is favorable for recession but does not by itself
+  determine TPS system quality** -- it says nothing about retained-
+  thickness insulation performance, structural behavior, or manufacturing/
+  attachment considerations.
+- **This model ignores internal temperature gradients and surface
+  thermochemistry** -- there is no conduction calculation into the
+  ablator's retained thickness in this milestone, and no surface energy
+  balance computing `q''(t)` itself.
+
+This is a first-order sizing/bookkeeping tool, not a complete ablative TPS
+design model.
+
 ## Verification summary
 
-69 automated tests in [tests/](tests/) cover both the steady model
-(Milestone 1, 38 tests) and the transient model (Milestone 2, 31 tests):
+105 automated tests in [tests/](tests/) cover the steady model
+(Milestone 1, 38 tests), the transient model (Milestone 2, 31 tests), and
+the ablative sizing model (Milestone 3, 36 tests):
 
 ### Steady model (Milestone 1)
 
@@ -335,7 +492,36 @@ sizing tool, not a certified thermal analysis.
 - Grid-refinement convergence check (change in peak backface temperature
   shrinks as `n_nodes` is refined at a fixed, stable `dt`)
 
-All 69 tests currently pass.
+### Ablative sizing model (Milestone 3)
+
+- **A.** Constant heat-flux heat load (`Q'' = q''*tau`, exact)
+- **B.** Piecewise heat-load hand calculation (multi-segment history,
+  exact sum), plus a sampled-history trapezoidal hand calculation
+- **C.** Consumed areal mass (`m''_consumed = Q''/H_eff`)
+- **D.** Recession depth (`delta = Q''/(rho*H_eff)`)
+- **E.** Density scaling (`delta ∝ 1/rho`)
+- **F.** Heat-of-ablation scaling (`delta ∝ 1/H_eff`)
+- **G.** Heat-load scaling (doubling `Q''` doubles consumed mass and
+  recession)
+- **H.** Initial-thickness identity (`t_initial = delta + t_retained`)
+- **I.** Mass decomposition (`m''_initial = m''_remaining + m''_consumed`)
+- **J.** Trial-thickness exact boundary (`Margin_t ~ 0` at
+  `t_trial = delta + t_retained`)
+- **K.** Over-thickness (positive margin, passes)
+- **L.** Under-thickness (negative margin, fails)
+- **M.** Zero heat load (`delta = 0`, consumed mass `= 0`,
+  `t_initial = t_retained`)
+- **N.** Invalid-material-input rejection (`rho <= 0`, `H_eff <= 0`,
+  NaN/inf)
+- **O.** Invalid-heat-history rejection (negative duration, non-monotonic
+  times, NaN/inf, negative heat flux, mismatched/too-few samples, empty
+  segment list)
+- **P.** Sampled-integration determinism (repeated calls agree exactly)
+- Recession-margin reporting when `max_recession` is supplied (and `None`
+  by default)
+- Invalid sizing/trial-evaluation input rejection
+
+All 105 tests currently pass.
 
 ## Sanity-case result (Milestone 1, steady)
 
@@ -405,6 +591,55 @@ steady sizing (a sufficiently long pulse converges toward the steady
 result). This comparison is illustrative only, not a real reentry
 certification load case.
 
+## Ablative sanity-study result (Milestone 3)
+
+One illustrative charring-ablator-style material, run via
+[examples/ablative_sanity_case.py](examples/ablative_sanity_case.py),
+exposed to a constant 2.0e6 W/m^2 heat-flux pulse for 60 s
+(`Q'' = 1.2e8 J/m^2`), with an explicit `t_retained = 5.0 mm`:
+
+| Quantity | Value |
+|---|---|
+| Density (rho) | 1400.0 kg/m^3 |
+| Effective heat of ablation (H_eff) | 1.000e+07 J/kg |
+| Total heat load (Q'') | 1.200e+08 J/m^2 |
+| Consumed areal mass | 12.000 kg/m^2 |
+| Recession depth | 8.57 mm |
+| Retained thickness requirement | 5.00 mm |
+| Initial required thickness | 13.57 mm |
+| Initial areal mass | 19.000 kg/m^2 |
+| Remaining areal mass | 7.000 kg/m^2 |
+| Consumed mass fraction | 0.632 |
+
+Mass check: `19.000 = 7.000 + 12.000` (initial = remaining + consumed).
+
+Off-nominal checks at the same heat load:
+
+- **80% of required initial thickness** (10.86 mm): remaining after
+  recession = 2.29 mm, margin = **-2.71 mm** -- **FAILS** the
+  retained-thickness requirement, as expected for an undersized ablator.
+- **120% of required initial thickness** (16.29 mm): remaining after
+  recession = 7.71 mm, margin = **+2.71 mm** -- **PASSES**, as expected for
+  an oversized ablator.
+
+### Sensitivity: effective heat of ablation (H_eff)
+
+| H_eff variant | H_eff [J/kg] | Recession [mm] | t_initial [mm] | Areal mass [kg/m^2] |
+|---|---|---|---|---|
+| -25% | 7.500e+06 | 11.43 | 16.43 | 23.000 |
+| baseline | 1.000e+07 | 8.57 | 13.57 | 19.000 |
+| +25% | 1.250e+07 | 6.86 | 11.86 | 16.600 |
+
+Recession depth (and therefore required initial thickness and areal mass)
+scales **inversely** with `H_eff` at fixed heat load and density: a
+higher-`H_eff` material sacrifices less mass for the same absorbed energy.
+This is a property of the lumped model's parameters, not a statement that
+`H_eff` alone determines overall TPS system quality.
+
+This case is explicitly illustrative; it is not tuned to represent any
+specific real ablative material or entry environment, and is not compared
+against the Milestone 1/2 reusable-TPS results here.
+
 ## Install & test
 
 ```bash
@@ -414,6 +649,7 @@ pip install -e ".[dev]"
 python -m pytest -q
 python examples/sanity_case.py
 python examples/transient_heating_study.py
+python examples/ablative_sanity_case.py
 ```
 
 ## License
