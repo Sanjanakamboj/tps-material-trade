@@ -73,3 +73,18 @@ class TPSMaterial:
         if self.specific_heat is not None:
             specific_heat = require_positive_finite(self.specific_heat, "specific_heat")
             object.__setattr__(self, "specific_heat", specific_heat)
+
+    def thermal_diffusivity(self) -> float:
+        """Thermal diffusivity: alpha = k / (rho * cp)  [m^2/s].
+
+        Requires ``specific_heat`` (cp) to be set -- it is optional on
+        ``TPSMaterial`` for Milestone 1's steady-state model, which never
+        calls this method, but transient conduction (Milestone 2) requires
+        it. Raises ValueError if cp is not set.
+        """
+        if self.specific_heat is None:
+            raise ValueError(
+                "thermal_diffusivity requires specific_heat (cp) to be set on "
+                f"material {self.name!r}, but specific_heat is None"
+            )
+        return self.conductivity / (self.density * self.specific_heat)

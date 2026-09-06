@@ -20,6 +20,15 @@ from .conduction import (
     areal_mass,
     size_thickness_for_backface_limit,
 )
+from .transient import (
+    HeatingPulse,
+    TransientResult,
+    TransientSizingResult,
+    square_pulse,
+    max_stable_time_step,
+    solve_transient_conduction,
+    size_thickness_transient,
+)
 
 __all__ = [
     "TPSMaterial",
@@ -30,6 +39,13 @@ __all__ = [
     "heat_flux_from_temperatures",
     "areal_mass",
     "size_thickness_for_backface_limit",
+    "HeatingPulse",
+    "TransientResult",
+    "TransientSizingResult",
+    "square_pulse",
+    "max_stable_time_step",
+    "solve_transient_conduction",
+    "size_thickness_transient",
 ]
 
 __version__ = "0.1.0"
