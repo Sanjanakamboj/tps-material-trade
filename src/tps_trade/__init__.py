@@ -43,6 +43,26 @@ from .ablative import (
     size_ablative_thickness,
     evaluate_trial_thickness,
 )
+from .trade import (
+    AblativeCandidate,
+    StudyCase,
+    ReusableTradeDetail,
+    AblativeTradeDetail,
+    TradeResult,
+    TradeSummary,
+    size_reusable_candidate,
+    size_ablative_candidate,
+    validate_candidate_database,
+    run_trade_study,
+    rank_feasible_by_mass,
+    summarize_trade,
+    generate_recommendation,
+)
+from .candidates import (
+    STUDY_CASE,
+    REUSABLE_CANDIDATES,
+    ABLATIVE_CANDIDATES,
+)
 
 __all__ = [
     "TPSMaterial",
@@ -72,6 +92,22 @@ __all__ = [
     "recession_depth",
     "size_ablative_thickness",
     "evaluate_trial_thickness",
+    "AblativeCandidate",
+    "StudyCase",
+    "ReusableTradeDetail",
+    "AblativeTradeDetail",
+    "TradeResult",
+    "TradeSummary",
+    "size_reusable_candidate",
+    "size_ablative_candidate",
+    "validate_candidate_database",
+    "run_trade_study",
+    "rank_feasible_by_mass",
+    "summarize_trade",
+    "generate_recommendation",
+    "STUDY_CASE",
+    "REUSABLE_CANDIDATES",
+    "ABLATIVE_CANDIDATES",
 ]
 
 __version__ = "0.1.0"

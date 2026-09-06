@@ -10,7 +10,7 @@ design margin?
 The final deliverable (later milestones) is an engineering trade table and a
 recommended TPS material/system.
 
-## Current scope: Milestone 1 + Milestone 2 + Milestone 3
+## Current scope: Milestone 1 + Milestone 2 + Milestone 3 + Milestone 4
 
 **Milestone 1** built a verified, one-dimensional, **steady-state**
 conduction model for a single homogeneous reusable TPS slab (a simple
@@ -22,21 +22,28 @@ against a finite-duration hot-side heating pulse rather than only an
 indefinitely sustained steady boundary condition (see "Transient conduction
 (Milestone 2)" below).
 
-**Milestone 3** adds a first-order **ablative** TPS sizing model -- a
+**Milestone 3** added a first-order **ablative** TPS sizing model -- a
 lumped surface energy-balance / recession model, independent of the
-reusable-TPS conduction models above -- so the project can begin comparing
+reusable-TPS conduction models above -- so the project could begin comparing
 reusable insulation against a sacrificial ablative concept on a common
-areal-mass basis (see "Ablative sizing (Milestone 3)" below). This
-milestone does **not** yet perform that reusable-vs-ablative comparison --
-it only builds and verifies the ablative sizing model itself.
+areal-mass basis (see "Ablative sizing (Milestone 3)" below).
 
-None of the three milestones implement pyrolysis kinetics, moving-boundary
+**Milestone 4** performs the first actual **reusable-vs-ablative trade**:
+a small, explicit candidate database, one canonical illustrative study
+case, sizing of every candidate with the already-verified Milestone 1-3
+models, a transparent trade table, deterministic ranking by areal mass, and
+one preliminary, case-specific recommendation (see "Reusable-vs-ablative
+trade (Milestone 4)" below). This milestone does **not** add lifecycle/
+refurbishment economics, reuse-cycle degradation modeling, or a final
+material recommendation beyond the single defined study case.
+
+None of the four milestones implement pyrolysis kinetics, moving-boundary
 finite-difference conduction, char-layer thermochemistry, surface
 chemistry, a coupled convective/radiative surface energy balance,
 temperature-dependent material properties, blowing correction,
-reusable-vs-ablative trade scoring, lifecycle/reuse scoring, trajectory
-simulation, CFD, radiation transport, or a final material recommendation.
-Those remain explicitly out of scope until later milestones.
+lifecycle/reuse scoring, trajectory simulation, CFD, radiation transport,
+or a final, general material recommendation. Those remain explicitly out of
+scope until later milestones.
 
 ## Slab coordinate convention
 
@@ -321,6 +328,135 @@ additionally reports an optional recession margin
 (`Margin_delta = max_recession - delta`) when a maximum allowable recession
 depth is supplied.
 
+## Reusable-vs-ablative trade (Milestone 4)
+
+This section is the first place in the project that puts reusable and
+ablative TPS candidates side by side. It adds **no new thermal physics** --
+every sizing call delegates to the already-verified Milestone 1/2 transient
+model and Milestone 3 ablative model (see
+[src/tps_trade/trade.py](src/tps_trade/trade.py) and
+[src/tps_trade/candidates.py](src/tps_trade/candidates.py)).
+
+### The modeling mismatch (read this first)
+
+The reusable model is driven by a prescribed **hot-side TEMPERATURE**
+history (a Dirichlet boundary condition). The ablative model is driven by a
+prescribed **net heat-FLUX** history (an energy input integrated directly
+into consumed mass). The canonical study case below picks one illustrative
+peak temperature and one illustrative heat flux intended to represent "the
+same" qualitative entry-like event, but there is **no physical derivation**
+here converting one into the other (that would require a surface energy
+balance, out of scope through this milestone). Treat the correspondence as
+illustrative and qualitative, not a derived equivalence. This is a
+fundamental limitation of comparing these two model categories at this
+stage of the project, not a hidden detail.
+
+### Canonical study case
+
+`STUDY_CASE` (`tps_trade.candidates.STUDY_CASE`), shared by every candidate:
+
+| Quantity | Value |
+|---|---|
+| Initial temperature | 300.0 K |
+| Peak hot-side temperature (reusable) | 1400.0 K |
+| Heating pulse duration | 120.0 s |
+| Total reusable simulation duration | 600.0 s |
+| Backface temperature limit (reusable) | 450.0 K |
+| Net heat flux (ablative) | 1.000e+06 W/m^2 |
+
+An **illustrative, entry-like** case -- not a certified vehicle
+trajectory. The heating pulse duration (120 s) is shared by both
+categories: the reusable hot-side pulse and the ablative heat-flux pulse
+both last exactly this long, so both models see an event of the same
+duration (even though they describe its magnitude in incompatible units,
+per the mismatch above).
+
+### Candidate database
+
+All properties below are **ILLUSTRATIVE / REPRESENTATIVE ONLY** -- none are
+sourced from a specific material data sheet, and none represent a real,
+named TPS material (e.g. Shuttle tile, PICA, Avcoat) or certified
+allowable.
+
+**Reusable candidates** (`tps_trade.candidates.REUSABLE_CANDIDATES`):
+
+| Name | rho [kg/m^3] | k [W/(m*K)] | cp [J/(kg*K)] | Max service temp [K] |
+|---|---|---|---|---|
+| Reusable low-density tile (illustrative) | 350.0 | 0.060 | 1050.0 | 1650.0 |
+| Reusable fibrous blanket (illustrative) | 150.0 | 0.045 | 1200.0 | 1250.0 |
+
+The fibrous blanket's max service temperature (1250 K) is **deliberately
+below** the study case's peak hot-side temperature (1400 K), so the
+candidate database itself demonstrates the service-temperature feasibility
+gate (see below) rather than only exercising it in a synthetic unit test.
+
+**Ablative candidates** (`tps_trade.candidates.ABLATIVE_CANDIDATES`), each
+an `AblativeCandidate` pairing an `AblativeMaterial` with its own
+`retained_thickness` and an illustrative `max_recession` structural
+allowable:
+
+| Name | rho [kg/m^3] | H_eff [J/kg] | Retained thickness [mm] | Max recession [mm] |
+|---|---|---|---|---|
+| Lightweight charring ablator (illustrative) | 280.0 | 6.000e+06 | 6.0 | 90.0 |
+| Dense high-H_eff ablator (illustrative) | 1400.0 | 1.000e+07 | 5.0 | 20.0 |
+
+`retained_thickness` and `max_recession` are trade-specific **engineering
+inputs**, not material properties -- this project never invents or
+certifies them.
+
+### Reusable sizing workflow
+
+For each reusable candidate: if `STUDY_CASE.t_hot_max > material.max_service_temperature`,
+the candidate is marked **infeasible without attempting to size a
+thickness** -- this project never silently sizes a material beyond its
+stated temperature capability. Otherwise, `size_thickness_transient(...)`
+(Milestone 2) is called with the study case's shared hot-side history,
+backface limit, thickness search bounds, and node count, and the result's
+thickness, areal mass, peak backface temperature, and temperature margin
+are carried into the common trade result.
+
+### Ablative sizing workflow
+
+For each ablative candidate: the study case's shared heat-flux history is
+integrated once (`Q'' = q''*tau_heat`), and `size_ablative_thickness(...)`
+(Milestone 3) is called with the candidate's material, that heat load,
+`retained_thickness`, and `max_recession`. A candidate is marked
+**infeasible** only if `max_recession` is supplied and the predicted
+recession exceeds it -- unlike the reusable model, this ablative model has
+no surface-temperature capability check here (it never computes a surface
+temperature in this milestone).
+
+### Common trade result
+
+`TradeResult` (see [src/tps_trade/trade.py](src/tps_trade/trade.py))
+exposes common fields (`name`, `category`, `feasible`, `required_thickness`,
+`initial_areal_mass`, `governing_metric_name`/`value`, `design_margin`,
+`margin_units`, `key_capability_limit`, `notes`) plus exactly one of
+`reusable_detail` / `ablative_detail` populated per instance -- unlike
+quantities (a temperature margin in K vs. a recession margin in m) are
+never forced into a single misleadingly-generic field.
+
+### Ranking
+
+`rank_feasible_by_mass(...)` is deterministic: (1) infeasible candidates
+are excluded entirely -- a candidate is never selected for having lower
+mass if it is infeasible; (2) feasible candidates are ranked ascending by
+`initial_areal_mass`; (3) ties are broken by greater `design_margin`; (4)
+any remaining tie is broken by name. No arbitrary weighted score is
+introduced -- this is a transparent, single-criterion (mass) ranking with
+an explicit tie-break, not a qualitative scoring rubric.
+
+### Comparison-fairness guarantee
+
+`run_trade_study(study_case, reusable_materials, ablative_candidates)`
+centralizes every sizing call against the **same** `StudyCase` instance
+(validating unique candidate names first), which is what guarantees every
+reusable candidate sees the identical hot-side history/backface limit/
+thickness bounds, and every ablative candidate sees the identical
+heat-flux history/retained-thickness convention -- fairness by
+construction, not a separate check bolted on afterward. All quantities
+throughout remain SI internally.
+
 ## Important limitation
 
 Prescribing `T_hot` and `q''` simultaneously and independently is an
@@ -372,6 +508,17 @@ already; the model does not compute how that net flux itself would change
 as the surface recedes or chars. See the docstring in
 [src/tps_trade/ablative.py](src/tps_trade/ablative.py) for the full
 discussion.
+
+The trade (Milestone 4) inherits every limitation of both models above
+(prescribed, not coupled, boundary conditions; constant material
+properties; no ablative surface temperature computed; no pyrolysis/char/
+chemistry/blowing) **plus** trade-level limitations of its own: no
+lifecycle/reuse accounting (refurbishment, reuse-cycle degradation,
+turnaround time), no attachment/substructure mass, no waterproofing or
+coatings, no integration penalties, no structural durability assessment,
+and no cost accounting. **This is a preliminary model comparison, not a
+certified TPS selection.** See the docstring in
+[src/tps_trade/trade.py](src/tps_trade/trade.py) for the full discussion.
 
 ## Engineering interpretation (Milestone 2)
 
@@ -431,11 +578,37 @@ sizing tool, not a certified thermal analysis.
 This is a first-order sizing/bookkeeping tool, not a complete ablative TPS
 design model.
 
+## Engineering interpretation (Milestone 4)
+
+- **Reusable systems** are often low density, rely on low thermal
+  diffusivity (good insulation, not necessarily high or low conductivity
+  alone -- see the Milestone 2 interpretation), and retain their full mass
+  after the heating event -- attractive for repeated missions, though this
+  project has not yet quantified any reuse/lifecycle benefit.
+- **Ablative systems** reject heat by consuming material: effective heat
+  of ablation directly sets how much sacrificial mass is required for a
+  given heat load. They may tolerate more severe or longer heating in
+  practice, but under this model they are always mission-consumable --
+  mass is spent, not retained.
+- **Lowest areal mass for one event is not automatically "best lifecycle
+  TPS."** A reusable candidate that wins this single-event mass comparison
+  still needs no replacement between flights (a real advantage this trade
+  does not credit numerically), while an ablative candidate that loses the
+  single-event mass comparison might still be preferable for a
+  single-use mission where reuse is irrelevant. Milestone 4 answers "which
+  candidate is lightest for this one modeled event," not "which system is
+  best over a program's lifecycle."
+- The trade's ranking is driven entirely by `initial_areal_mass` among
+  feasible candidates -- it does not (and, per this project's stated
+  approach, should not) collapse thermal capability, reuse potential, and
+  manufacturability into a single arbitrary weighted score.
+
 ## Verification summary
 
-105 automated tests in [tests/](tests/) cover the steady model
-(Milestone 1, 38 tests), the transient model (Milestone 2, 31 tests), and
-the ablative sizing model (Milestone 3, 36 tests):
+132 automated tests in [tests/](tests/) cover the steady model
+(Milestone 1, 38 tests), the transient model (Milestone 2, 31 tests), the
+ablative sizing model (Milestone 3, 36 tests), and the reusable-vs-ablative
+trade (Milestone 4, 27 tests):
 
 ### Steady model (Milestone 1)
 
@@ -521,7 +694,38 @@ the ablative sizing model (Milestone 3, 36 tests):
   by default)
 - Invalid sizing/trial-evaluation input rejection
 
-All 105 tests currently pass.
+### Reusable-vs-ablative trade (Milestone 4)
+
+- **A.** Candidate database validation (unique names, valid properties,
+  category consistency, rejection of duplicate names / wrong types)
+- **B.** Reusable sizing consistency (trade result matches an independent
+  direct call to `size_thickness_transient`)
+- **C.** Ablative sizing consistency (trade result matches an independent
+  direct call to `size_ablative_thickness`)
+- **D.** Service-temperature rejection (a candidate below the study case's
+  hot-side maximum is infeasible; the canonical fibrous-blanket candidate
+  demonstrates this for real)
+- **E.** Common study-case enforcement (sizing candidates never mutates
+  the shared `StudyCase`; every candidate draws from the same heating
+  history / heat load)
+- **F.** Areal-mass ranking (lightest feasible synthetic candidate is
+  selected)
+- **G.** Infeasible exclusion (an infeasible candidate is never selected
+  for having lower mass)
+- **H.** Deterministic tie-break (equal-mass candidates ranked
+  consistently by margin, then by name, regardless of input order)
+- **J.** Reusable model trend (higher `rho*cp` / lower `alpha` reduces
+  required transient thickness for the trade's own study case)
+- **K.** Ablative model trend (higher `H_eff` reduces consumed mass and
+  recession for equal heat load)
+- **L.** Mass identity (`initial = remaining + consumed`) verified through
+  the trade result
+- End-to-end `run_trade_study` / `summarize_trade` / `generate_recommendation`
+  checks, including the no-feasible-candidate diagnostic
+- `StudyCase` input validation (hot max vs. initial, total time vs. pulse
+  duration, thickness bounds, Fourier limit)
+
+All 132 tests currently pass.
 
 ## Sanity-case result (Milestone 1, steady)
 
@@ -640,6 +844,65 @@ This case is explicitly illustrative; it is not tuned to represent any
 specific real ablative material or entry environment, and is not compared
 against the Milestone 1/2 reusable-TPS results here.
 
+## Trade study result (Milestone 4)
+
+Run via [examples/tps_material_trade.py](examples/tps_material_trade.py)
+against the canonical `STUDY_CASE`:
+
+**Reusable candidates:**
+
+| Name | Feasible | Thickness [mm] | Areal mass [kg/m^2] | Peak T_back [K] | Margin [K] | alpha [m^2/s] |
+|---|---|---|---|---|---|---|
+| Reusable low-density tile (illustrative) | True | 16.20 | 5.67 | 449.9 | +0.148 | 1.633e-07 |
+| Reusable fibrous blanket (illustrative) | **False** | -- | -- | -- | -- | -- |
+
+The fibrous blanket is infeasible: the study case's 1400 K peak hot-side
+temperature exceeds its 1250 K `max_service_temperature`, so it is never
+sized.
+
+**Ablative candidates:**
+
+| Name | Feasible | Initial thickness [mm] | Areal mass [kg/m^2] | Recession [mm] | Consumed mass [%] | Retained thickness [mm] |
+|---|---|---|---|---|---|---|
+| Lightweight charring ablator (illustrative) | True | 77.43 | 21.68 | 71.43 | 92.3 | 6.00 |
+| Dense high-H_eff ablator (illustrative) | True | 13.57 | 19.00 | 8.57 | 63.2 | 5.00 |
+
+**Ranking (feasible candidates, lightest first):**
+
+1. Reusable low-density tile (illustrative) -- reusable -- 5.67 kg/m^2
+2. Dense high-H_eff ablator (illustrative) -- ablative -- 19.00 kg/m^2
+3. Lightweight charring ablator (illustrative) -- ablative -- 21.68 kg/m^2
+
+**Preliminary recommendation:** the minimum-areal-mass FEASIBLE candidate
+under this simplified model for this study case is the **Reusable
+low-density tile (illustrative)**, 13.33 kg/m^2 lighter than the next
+feasible candidate. This is the minimum-mass candidate **under this
+simplified model for this specific illustrative study case** -- it is
+**not** a claim about the best real spacecraft TPS (see "Engineering
+interpretation (Milestone 4)" above for why).
+
+### Heating-duration sensitivity
+
+Holding the peak hot-side temperature and heat flux fixed and varying only
+the heating-pulse duration:
+
+| Duration | Reusable tile mass [kg/m^2] | Lightweight ablator mass [kg/m^2] | Dense ablator mass [kg/m^2] | Winner |
+|---|---|---|---|---|
+| 60 s (shorter) | 4.01 | 11.68 (feasible) | 13.00 | Reusable tile |
+| 120 s (baseline) | 5.67 | 21.68 (feasible) | 19.00 | Reusable tile |
+| 240 s (longer) | 8.01 | 41.68 (**infeasible**: exceeds 90 mm recession allowable) | 31.00 | Reusable tile |
+
+The reusable candidate's required mass grows relatively slowly with
+duration (transient penetration scales with the square root of time),
+while each ablative candidate's consumed mass grows linearly with the
+constant heat flux held over a longer time. In this study case **the
+ranking does not cross over** -- the reusable tile remains the
+minimum-mass feasible candidate at every duration tested -- but the
+lightweight charring ablator becomes infeasible at the longest duration
+because its recession exceeds its illustrative structural allowable,
+independent of the mass ranking itself. No crossover was forced; this is
+simply what the numbers show for this candidate set and case.
+
 ## Install & test
 
 ```bash
@@ -650,6 +913,7 @@ python -m pytest -q
 python examples/sanity_case.py
 python examples/transient_heating_study.py
 python examples/ablative_sanity_case.py
+python examples/tps_material_trade.py
 ```
 
 ## License
